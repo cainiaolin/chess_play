@@ -1,0 +1,184 @@
+/* 游戏页面样式 */
+
+.game-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* 状态栏 */
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 30rpx;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 0 0 24rpx 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+}
+
+.status-info {
+  flex: 1;
+}
+
+.status-text {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.status-playing {
+  color: #52c41a;
+}
+
+.status-ended {
+  color: #999;
+}
+
+.game-info {
+  display: flex;
+  align-items: center;
+}
+
+.info-text {
+  font-size: 26rpx;
+  color: #666;
+  padding: 8rpx 16rpx;
+  background: #f0f0f0;
+  border-radius: 20rpx;
+}
+
+/* 加载中 */
+.loading-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 60rpx;
+}
+
+.loading-spinner {
+  width: 80rpx;
+  height: 80rpx;
+  border: 6rpx solid #fff;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-text {
+  margin-top: 30rpx;
+  font-size: 28rpx;
+  color: #fff;
+}
+
+/* 错误信息 */
+.error-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 60rpx;
+}
+
+.error-text {
+  font-size: 28rpx;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 40rpx;
+}
+
+.retry-btn {
+  padding: 20rpx 60rpx;
+  background: #fff;
+  color: #667eea;
+  border-radius: 50rpx;
+  font-size: 28rpx;
+  font-weight: bold;
+}
+
+/* 游戏容器 */
+.game-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20rpx;
+  overflow: hidden;
+}
+
+/* 游戏结果 */
+.game-result {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.result-content {
+  width: 80%;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 60rpx 40rpx;
+  text-align: center;
+}
+
+.result-title {
+  display: block;
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 60rpx;
+}
+
+.result-actions {
+  display: flex;
+  gap: 20rpx;
+  justify-content: center;
+}
+
+.result-actions .btn {
+  flex: 1;
+}
+
+/* 按钮样式 */
+.btn {
+  padding: 24rpx 48rpx;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  font-weight: bold;
+  border: none;
+  transition: all 0.3s;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+
+.btn-primary:active {
+  opacity: 0.8;
+}
+
+.btn-secondary {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.btn-secondary:active {
+  background: #e0e0e0;
+}

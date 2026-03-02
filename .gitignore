@@ -1,0 +1,21 @@
+# 依赖包
+node_modules/
+server/node_modules/
+
+ # 敏感配置文件（包含 appid、secret 等信息）
+project.private.config.json
+
+# IDE 配置
+.vscode/
+.idea/
+
+# 构建产物
+*.log
+sourcemap.zip
+
+# 临时文件
+nul
+
+# Claude 配置（可选，如不需要提交可取消注释）
+.claude/
+.spec-workflow/

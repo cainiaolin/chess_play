@@ -1,0 +1,245 @@
+.settings-page {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  padding-bottom: 120rpx;
+}
+
+/* 设置区块 */
+.settings-section {
+  background-color: #fff;
+  margin-bottom: 24rpx;
+}
+
+.section-header {
+  padding: 32rpx 32rpx 16rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.section-title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.section-subtitle {
+  display: block;
+  font-size: 24rpx;
+  color: #888;
+}
+
+/* API 密钥列表 */
+.api-key-list {
+  padding: 24rpx 32rpx;
+}
+
+.api-key-item {
+  margin-bottom: 32rpx;
+}
+
+.api-key-item:last-child {
+  margin-bottom: 0;
+}
+
+.key-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.key-info {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.key-emoji {
+  font-size: 40rpx;
+}
+
+.key-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.key-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.key-desc {
+  font-size: 22rpx;
+  color: #888;
+}
+
+.key-status {
+  padding: 8rpx 20rpx;
+  border-radius: 20rpx;
+  font-size: 22rpx;
+  background-color: #f0f0f0;
+  color: #999;
+}
+
+.key-status.configured {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.key-input {
+  width: 100%;
+  padding: 20rpx;
+  background-color: #f8f9fa;
+  border: 1rpx solid #e0e0e0;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  margin-bottom: 12rpx;
+}
+
+.key-actions {
+  display: flex;
+  gap: 12rpx;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 20rpx;
+  background-color: #f8f9fa;
+  border: 1rpx solid #e0e0e0;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  color: #333;
+}
+
+.action-btn.primary {
+  background-color: #8B4513;
+  color: #fff;
+  border-color: #8B4513;
+}
+
+.action-btn::after {
+  border: none;
+}
+
+/* 设置项 */
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.setting-item:last-child {
+  border-bottom: none;
+}
+
+.setting-item.switch-item {
+  background-color: #fff;
+}
+
+.setting-label {
+  font-size: 28rpx;
+  color: #333;
+}
+
+.setting-desc {
+  display: block;
+  font-size: 22rpx;
+  color: #888;
+  margin-top: 4rpx;
+}
+
+.setting-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.setting-input {
+  flex: 1;
+  padding: 16rpx 24rpx;
+  background-color: #f8f9fa;
+  border: 1rpx solid #e0e0e0;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  text-align: right;
+  min-width: 300rpx;
+}
+
+/* 测试按钮 */
+.test-btn {
+  margin: 0 32rpx 24rpx;
+  padding: 24rpx;
+  background-color: #8B4513;
+  color: #fff;
+  font-size: 28rpx;
+  border-radius: 8rpx;
+  border: none;
+}
+
+.test-btn::after {
+  border: none;
+}
+
+.test-btn[disabled] {
+  opacity: 0.6;
+}
+
+/* 关于 */
+.about-info {
+  padding: 24rpx 32rpx;
+}
+
+.about-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.about-item:last-child {
+  border-bottom: none;
+}
+
+.about-label {
+  font-size: 26rpx;
+  color: #666;
+}
+
+.about-value {
+  font-size: 26rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+/* 底部按钮 */
+.footer-actions {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24rpx;
+  background-color: #fff;
+  box-shadow: 0 -4rpx 12rpx rgba(0, 0, 0, 0.05);
+}
+
+.footer-btn {
+  width: 100%;
+  padding: 28rpx;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  border: none;
+}
+
+.footer-btn.danger {
+  background-color: #fff;
+  color: #dc3545;
+  border: 1rpx solid #dc3545;
+}
+
+.footer-btn::after {
+  border: none;
+}

@@ -1,0 +1,10 @@
+<!--棋盘组件-->
+<view class="chess-board">
+  <canvas
+    type="2d"
+    id="chessCanvas"
+    class="chess-canvas"
+    style="width: {{canvasWidth}}px; height: {{canvasHeight}}px;"
+    bindtouchstart="onTouchStart"
+  />
+</view>
