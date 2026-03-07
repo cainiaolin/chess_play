@@ -1,102 +1,93 @@
 <template>
   <div class="spectate-page">
     <header class="header">
-      <button class="back-btn" @click="goBack">
-        <span>← 返回</span>
-      </button>
+      <a href="/" class="back-btn">← 返回</a>
       <h1>观战模式</h1>
     </header>
 
-    <main class="main-content">
+    <div class="spectate-content">
       <!-- 游戏列表 -->
       <div v-if="!selectedGameId" class="game-list-section">
-        <GameList
-          :games="games"
-          :loading="loading"
-          @refresh="loadGames"
-          @select-game="selectGame"
-        />
+        <div class="list-header">
+          <h2>对局列表</h2>
+          <button class="btn btn-secondary" @click="loadGames">刷新</button>
+        </div>
+
+        <div v-if="loading" class="loading">加载中...</div>
+        <div v-else-if="games.length === 0" class="empty">
+          <p>暂无进行中的对局</p>
+        </div>
+        <div v-else class="games-grid">
+          <div
+            v-for="game in games"
+            :key="game.id"
+            class="game-card"
+            @click="selectGame(game.id)"
+          >
+            <div class="game-header">
+              <span class="game-id">#{{ game.id.slice(-6) }}</span>
+              <span class="game-status" :class="game.status">
+                {{ statusText(game.status) }}
+              </span>
+            </div>
+            <div class="game-info">
+              <span>回合: {{ game.turn === 'red' ? '红方' : '黑方' }}</span>
+              <span>步数: {{ game.moves?.length || 0 }}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 观战界面 -->
       <div v-else class="spectate-section">
         <div class="spectate-header">
-          <button class="btn btn-outline" @click="backToList">
-            <span>← 返回列表</span>
-          </button>
-          <div class="game-info">
-            <span class="game-id">对局 #{{ selectedGameId.slice(-6) }}</span>
-          </div>
+          <button class="btn btn-secondary" @click="backToList">← 返回列表</button>
+          <span class="game-id">对局 #{{ selectedGameId.slice(-6) }}</span>
         </div>
 
-        <GameStatus
-          :turn="gameStore.currentTurn"
-          :status="gameStore.gameStatus"
-          :move-count="moveCount"
-        />
+        <div class="status-bar">
+          <span class="turn" :class="currentTurn">{{ turnText }}</span>
+          <span class="move-count">第 {{ moveCount }} 步</span>
+        </div>
 
+        <div v-if="loadingGame" class="loading">加载中...</div>
         <ChessBoard
-          :board="board"
+          v-else
+          :board="boardData"
           :readonly="true"
-          :selected-piece="null"
-          :valid-moves="[]"
-          :last-move="gameStore.lastMove"
         />
-
-        <div v-if="errorMessage" class="error-message">
-          {{ errorMessage }}
-        </div>
       </div>
-    </main>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
 import ChessBoard from '../../components/ChessBoard/ChessBoard.vue'
-import GameStatus from '../../components/GameStatus/GameStatus.vue'
-import GameList from '../../components/GameList/GameList.vue'
-import { useGameStore } from '../../stores/game'
-import { useConfigStore } from '../../stores/config'
-import { useSocketStore } from '../../stores/socket'
 import { gameApi } from '../../utils/api'
-
-const router = useRouter()
-const gameStore = useGameStore()
-const configStore = useConfigStore()
-const socketStore = useSocketStore()
 
 const games = ref([])
 const loading = ref(false)
 const selectedGameId = ref(null)
-const errorMessage = ref('')
+const loadingGame = ref(false)
+const gameState = ref(null)
 
-// 计算棋盘数据
-const board = computed(() => {
-  return gameStore.gameState?.board || []
-})
-
-const moveCount = computed(() => {
-  return gameStore.gameState?.moves?.length || 0
-})
+// 计算属性
+const boardData = computed(() => gameState.value?.board || [])
+const currentTurn = computed(() => gameState.value?.turn || 'red')
+const moveCount = computed(() => gameState.value?.moves?.length || 0)
+const turnText = computed(() => currentTurn.value === 'red' ? '红方' : '黑方')
 
 // 加载游戏列表
 async function loadGames() {
+  loading.value = true
   try {
-    loading.value = true
-    errorMessage.value = ''
-
     const result = await gameApi.list()
-
     if (result.success) {
-      games.value = result.data.games || []
-    } else {
-      throw new Error(result.message || '加载游戏列表失败')
+      games.value = result.data || []
     }
   } catch (error) {
     console.error('加载游戏列表失败:', error)
-    errorMessage.value = error.message || '加载游戏列表失败，请重试'
   } finally {
     loading.value = false
   }
@@ -104,67 +95,173 @@ async function loadGames() {
 
 // 选择游戏观战
 async function selectGame(gameId) {
+  selectedGameId.value = gameId
+  loadingGame.value = true
   try {
-    errorMessage.value = ''
-    selectedGameId.value = gameId
-
-    // 加载游戏状态
-    const result = await gameStore.loadGame(gameId)
-
-    if (!result.success) {
-      throw new Error(result.message || '加载游戏失败')
+    const result = await gameApi.get(gameId)
+    if (result.success) {
+      gameState.value = result.data
     }
-
-    // 连接 Socket
-    if (!socketStore.isConnected) {
-      socketStore.connect(configStore.serverUrl)
-    }
-
-    // 订阅游戏更新
-    socketStore.subscribe(gameId, handleGameStateUpdate)
   } catch (error) {
-    console.error('选择游戏失败:', error)
-    errorMessage.value = error.message || '加载游戏失败，请重试'
-    selectedGameId.value = null
+    console.error('加载游戏失败:', error)
+  } finally {
+    loadingGame.value = false
   }
-}
-
-// 处理游戏状态更新
-function handleGameStateUpdate(newState) {
-  gameStore.updateGameState(newState)
 }
 
 // 返回列表
 function backToList() {
-  // 取消订阅
-  if (selectedGameId.value) {
-    socketStore.unsubscribe(selectedGameId.value)
-  }
-
-  // 重置状态
   selectedGameId.value = null
-  gameStore.reset()
-  errorMessage.value = ''
-
-  // 重新加载列表
-  loadGames()
+  gameState.value = null
 }
 
-function goBack() {
-  router.push('/')
+function statusText(status) {
+  const map = {
+    playing: '对弈中',
+    red_win: '红胜',
+    black_win: '黑胜',
+    draw: '和棋'
+  }
+  return map[status] || status
 }
 
 onMounted(() => {
-  configStore.loadConfig()
   loadGames()
-})
-
-onUnmounted(() => {
-  // 清理资源
-  if (selectedGameId.value) {
-    socketStore.unsubscribe(selectedGameId.value)
-  }
 })
 </script>
 
-<style scoped src="./SpectatePage.scss"></style>
+<style scoped>
+.spectate-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: #fff;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.back-btn {
+  color: #fff;
+  text-decoration: none;
+  margin-right: 16px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.spectate-content {
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.list-header h2 {
+  margin: 0;
+}
+
+.btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.loading, .empty {
+  text-align: center;
+  padding: 40px;
+  color: #aaa;
+}
+
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.game-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.game-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.game-id {
+  font-weight: bold;
+}
+
+.game-status.playing {
+  color: #4caf50;
+}
+
+.game-info {
+  display: flex;
+  gap: 16px;
+  color: #aaa;
+  font-size: 14px;
+}
+
+.spectate-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.spectate-header .game-id {
+  color: #aaa;
+}
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.turn {
+  font-weight: bold;
+}
+
+.turn.red { color: #ff6b6b; }
+.turn.black { color: #fff; }
+</style>

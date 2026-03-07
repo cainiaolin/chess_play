@@ -7,20 +7,20 @@
 
     <main class="main-content">
       <div class="action-buttons">
-        <button class="btn btn-primary btn-large" @click="startGame">
+        <a href="/game.html" class="btn btn-primary btn-large">
           <span class="icon">♟</span>
           <span>开始对弈</span>
-        </button>
+        </a>
 
-        <button class="btn btn-secondary btn-large" @click="goSpectate">
+        <a href="/spectate.html" class="btn btn-secondary btn-large">
           <span class="icon">👁</span>
           <span>观战模式</span>
-        </button>
+        </a>
 
-        <button class="btn btn-outline btn-large" @click="goSettings">
+        <a href="/settings.html" class="btn btn-outline btn-large">
           <span class="icon">⚙</span>
           <span>游戏设置</span>
-        </button>
+        </a>
       </div>
 
       <div class="info-section">
@@ -61,11 +61,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted } from 'vue'
 import { useConfigStore } from '../../stores/config'
 
-const router = useRouter()
 const configStore = useConfigStore()
 
 const aiModelText = computed(() => {
@@ -84,18 +82,6 @@ const serverUrlText = computed(() => {
   }
   return url.replace(/^https?:\/\//, '').split('/')[0]
 })
-
-function startGame() {
-  router.push('/game.html')
-}
-
-function goSpectate() {
-  router.push('/spectate.html')
-}
-
-function goSettings() {
-  router.push('/settings.html')
-}
 
 onMounted(() => {
   configStore.loadConfig()

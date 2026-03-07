@@ -1,9 +1,7 @@
 <template>
   <div class="settings-page">
     <header class="header">
-      <button class="back-btn" @click="goBack">
-        <span>← 返回</span>
-      </button>
+      <a href="/" class="back-btn">← 返回</a>
       <h1>游戏设置</h1>
     </header>
 
@@ -111,10 +109,8 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { useConfigStore } from '../../stores/config'
 
-const router = useRouter()
 const configStore = useConfigStore()
 
 const saveSuccess = ref(false)
@@ -133,10 +129,6 @@ const difficultyLevels = [
   { value: 4, label: '较难' },
   { value: 5, label: '困难' }
 ]
-
-function goBack() {
-  router.push('/')
-}
 
 function handleSave() {
   // 保存配置到 store
