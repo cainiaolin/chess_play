@@ -12,26 +12,20 @@
   },
   "tabBar": {
     "color": "#7A7E83",
-    "selectedColor": "#3cc51f",
-    "borderStyle": "black",
+    "selectedColor": "#d43c33",
+    "borderStyle": "white",
     "backgroundColor": "#ffffff",
     "list": [
       {
         "pagePath": "pages/game/game",
-        "iconPath": "images/icon-game.png",
-        "selectedIconPath": "images/icon-game-active.png",
         "text": "对弈"
       },
       {
         "pagePath": "pages/spectate/spectate",
-        "iconPath": "images/icon-spectate.png",
-        "selectedIconPath": "images/icon-spectate-active.png",
         "text": "观战"
       },
       {
         "pagePath": "pages/settings/settings",
-        "iconPath": "images/icon-settings.png",
-        "selectedIconPath": "images/icon-settings-active.png",
         "text": "设置"
       }
     ]

@@ -16,6 +16,10 @@ sourcemap.zip
 # 临时文件
 nul
 
+# Git Worktrees（隔离工作目录）
+.worktrees/
+worktrees/
+
 # Claude 配置（可选，如不需要提交可取消注释）
 .claude/
 .spec-workflow/
