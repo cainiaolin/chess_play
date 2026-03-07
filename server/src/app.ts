@@ -2,9 +2,14 @@ import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import { createServer, Server as HttpServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { gameRouter } from './routes/game';
 import { GameHandler } from './socket/game-handler';
 import { gameService } from './services/game-service';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Express应用配置
@@ -61,6 +66,9 @@ export class App {
    * 初始化路由
    */
   private initializeRoutes(): void {
+    // 静态文件服务（前端构建产物）
+    this.app.use(express.static(path.join(__dirname, '../public')));
+
     // 健康检查端点
     this.app.get('/health', (req: Request, res: Response) => {
       res.status(200).json({
@@ -73,13 +81,17 @@ export class App {
     // 游戏API路由
     this.app.use('/api/game', gameRouter);
 
-    // 404处理
-    this.app.use((req: Request, res: Response) => {
-      res.status(404).json({
-        error: 'Not Found',
-        message: `Route ${req.method} ${req.path} not found`,
-        timestamp: new Date().toISOString()
-      });
+    // SPA fallback
+    this.app.get('*', (req: Request, res: Response) => {
+      if (req.accepts('html')) {
+        res.sendFile(path.join(__dirname, '../public/index.html'));
+      } else {
+        res.status(404).json({
+          error: 'Not Found',
+          message: `Route ${req.method} ${req.path} not found`,
+          timestamp: new Date().toISOString()
+        });
+      }
     });
   }
 
