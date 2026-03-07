@@ -1,0 +1,100 @@
+.spectate-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: #fff;
+
+  .header {
+    display: flex;
+    align-items: center;
+    padding: 20px;
+
+    .back-btn {
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 8px 16px;
+      border-radius: 8px;
+      transition: background 0.3s;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+    }
+
+    h1 {
+      flex: 1;
+      text-align: center;
+      margin: 0;
+      font-size: 24px;
+      padding-right: 80px;
+    }
+  }
+
+  .main-content {
+    flex: 1;
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .game-list-section {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .spectate-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+
+    .spectate-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      width: 100%;
+      max-width: 500px;
+
+      .btn {
+        padding: 10px 20px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-size: 14px;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.15);
+        }
+      }
+
+      .game-info {
+        flex: 1;
+        text-align: center;
+
+        .game-id {
+          font-size: 14px;
+          color: #aaa;
+          font-family: monospace;
+        }
+      }
+    }
+
+    .error-message {
+      padding: 12px 16px;
+      background-color: #fee;
+      color: #c33;
+      border-radius: 4px;
+      font-size: 14px;
+      text-align: center;
+      max-width: 400px;
+    }
+  }
+}
