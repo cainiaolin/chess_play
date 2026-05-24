@@ -191,7 +191,7 @@ export class ChessEngine {
     // 检查目标位置是否有己方棋子
     const targetPiece = this.board[to.y][to.x];
     if (targetPiece && targetPiece.color === piece.color) {
-      //return { valid: false, reason: '目标位置有己方棋子' };
+      return { valid: false, reason: '目标位置有己方棋子' };
     }
 
     // 检查起始和目标位置是否相同
@@ -461,7 +461,7 @@ export class ChessEngine {
     if (targetPiece === null) {
       // 移动（不吃子）：路径上不能有棋子
       if (piecesBetween > 0) {
-        //return { valid: false, reason: '炮移动时不能越过棋子' };
+        return { valid: false, reason: '炮移动时不能越过棋子' };
       }
     } else {
       // 吃子：必须隔一个棋子

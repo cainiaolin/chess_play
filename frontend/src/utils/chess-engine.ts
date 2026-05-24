@@ -100,7 +100,7 @@ export class ChessEngine {
 
     const targetPiece = this.board[to.y][to.x];
     if (targetPiece && targetPiece.color === piece.color) {
-      // 己方棋子不能吃（与后端保持一致：此处也注释掉以同步后端行为）
+      return { valid: false, reason: '不能吃己方棋子' };
     }
 
     const pieceValidation = this.validatePieceMove(piece, from, to);
@@ -247,7 +247,9 @@ export class ChessEngine {
     const piecesBetween = this.countPiecesBetween(from, to);
 
     if (targetPiece === null) {
-      // 与后端保持一致：非吃子时中间有子的检查被注释掉了
+      if (piecesBetween > 0) {
+        return { valid: false, reason: '炮移动时不能越过棋子' };
+      }
     } else {
       if (piecesBetween !== 1) {
         return { valid: false, reason: '炮吃子时必须隔一个棋子' };
