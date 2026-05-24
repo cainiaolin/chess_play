@@ -1,15 +1,16 @@
-import express, { Application, Request, Response } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { createServer, Server as HttpServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { gameRouter } from './routes/game';
 import { GameHandler } from './socket/game-handler';
 import { gameService } from './services/game-service';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// 获取当前文件所在目录（编译后的 dist 目录）
+// 使用 process.cwd() 结合相对路径来确定正确位置
+const distDir = path.resolve(__dirname, '..');
+const publicDir = path.join(distDir, 'public');
 
 /**
  * Express应用配置
@@ -67,7 +68,7 @@ export class App {
    */
   private initializeRoutes(): void {
     // 静态文件服务（前端构建产物）
-    this.app.use(express.static(path.join(__dirname, '../public')));
+    this.app.use(express.static(publicDir));
 
     // 健康检查端点
     this.app.get('/health', (req: Request, res: Response) => {
@@ -81,10 +82,10 @@ export class App {
     // 游戏API路由
     this.app.use('/api/game', gameRouter);
 
-    // SPA fallback
-    this.app.get('*', (req: Request, res: Response) => {
+    // SPA fallback - Express 5.x 使用 {*path} 语法替代 *
+    this.app.get('/{*path}', (req: Request, res: Response) => {
       if (req.accepts('html')) {
-        res.sendFile(path.join(__dirname, '../public/index.html'));
+        res.sendFile(path.join(publicDir, 'index.html'));
       } else {
         res.status(404).json({
           error: 'Not Found',
@@ -117,7 +118,7 @@ export class App {
    * 初始化错误处理
    */
   private initializeErrorHandling(): void {
-    this.app.use((err: Error, req: Request, res: Response, next: any) => {
+    this.app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
       console.error('Error:', err);
       res.status(500).json({
         error: 'Internal Server Error',

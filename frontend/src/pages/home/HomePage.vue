@@ -38,6 +38,10 @@
           <h3>当前配置</h3>
           <div class="config-info">
             <div class="config-item">
+              <span class="label">对局模式:</span>
+              <span class="value">{{ gameModeText }}</span>
+            </div>
+            <div class="config-item">
               <span class="label">AI 模型:</span>
               <span class="value">{{ aiModelText }}</span>
             </div>
@@ -66,13 +70,22 @@ import { useConfigStore } from '../../stores/config'
 
 const configStore = useConfigStore()
 
+const gameModeText = computed(() => {
+  if (configStore.gameMode === 'ai_vs_ai') return 'AI 观战（双 AI）'
+  return configStore.humanSide === 'black' ? '人机 · 执黑' : '人机 · 执红'
+})
+
 const aiModelText = computed(() => {
   const modelMap = {
     deepseek: 'DeepSeek',
     openai: 'OpenAI',
+    ollama: 'Ollama',
     local: '本地模型'
   }
-  return modelMap[configStore.aiModel] || configStore.aiModel
+  const r = modelMap[configStore.redAiModel] || configStore.redAiModel
+  const b = modelMap[configStore.blackAiModel] || configStore.blackAiModel
+  if (r === b) return r
+  return `红 ${r} / 黑 ${b}`
 })
 
 const serverUrlText = computed(() => {

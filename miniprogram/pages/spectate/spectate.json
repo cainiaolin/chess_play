@@ -1,7 +1,0 @@
-{
-  "navigationBarTitleText": "AI观战",
-  "usingComponents": {
-    "chess-board": "/components/chess-board/chess-board",
-    "game-status": "/components/game-status/game-status"
-  }
-}

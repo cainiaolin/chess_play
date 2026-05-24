@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
+    "module": "NodeNext",
     "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./src",
@@ -10,7 +10,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node",
+    "moduleResolution": "NodeNext",
     "types": ["node"]
   },
   "include": ["src/**/*"],
@@ -18,8 +18,6 @@
     "node_modules",
     "tests",
     "**/*.test.ts",
-    "**/*.example.ts",
-    "src/services/ai-adapter.test.ts",
-    "src/services/ai-adapter.example.ts"
+    "**/*.example.ts"
   ]
 }

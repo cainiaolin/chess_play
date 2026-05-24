@@ -8,12 +8,29 @@ import { Position } from '../types/chess';
 interface CreateGameRequest {
   redPlayer: {
     type: 'user' | 'ai';
-    model?: string;
   };
   blackPlayer: {
     type: 'user' | 'ai';
-    model?: string;
   };
+  options?: {
+    timerMode?: 'per_move' | 'total_time';
+    moveTimeLimit?: number;
+    redTimeLimit?: number;
+    blackTimeLimit?: number;
+    firstPlayer?: 'red' | 'black' | 'random';
+    allowUndo?: boolean;
+    autoForfeit?: boolean;
+    aiThinkDelay?: number;
+    drawOnNoCapture?: number;
+  };
+}
+
+/**
+ * 强制结束请求接口
+ */
+interface EndGameRequest {
+  winner: 'red' | 'black' | 'draw';
+  reason: 'checkmate' | 'stalemate' | 'resignation' | 'timeout' | 'illegal_move' | 'draw_agreement' | 'repetition' | 'no_capture_draw' | 'max_moves_draw';
 }
 
 /**
@@ -52,25 +69,10 @@ router.post('/create', (req: Request, res: Response) => {
       });
     }
 
-    if (body.redPlayer.type === 'ai' && !body.redPlayer.model) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: 'AI玩家需要指定模型',
-        code: 'MISSING_AI_MODEL'
-      });
-    }
-
-    if (body.blackPlayer.type === 'ai' && !body.blackPlayer.model) {
-      return res.status(400).json({
-        error: 'Bad Request',
-        message: 'AI玩家需要指定模型',
-        code: 'MISSING_AI_MODEL'
-      });
-    }
-
     const config: GameConfig = {
       redPlayer: body.redPlayer,
-      blackPlayer: body.blackPlayer
+      blackPlayer: body.blackPlayer,
+      options: body.options
     };
 
     const game = gameService.createGame(config);
@@ -159,6 +161,7 @@ router.post('/:gameId/move', async (req: Request, res: Response) => {
       data: {
         move: result.move,
         aiMove: result.aiMove,
+        error: result.error,
         gameState: result.gameState
       }
     });
@@ -168,6 +171,50 @@ router.post('/:gameId/move', async (req: Request, res: Response) => {
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : '执行走法失败',
       code: 'MOVE_EXECUTION_FAILED'
+    });
+  }
+});
+
+/**
+ * POST /api/game/:gameId/ai-step
+ * 由当前执子方 AI 走一步（用于双 AI 观战或开局先手为 AI）
+ */
+router.post('/:gameId/ai-step', async (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+
+    if (Array.isArray(gameId)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '无效的游戏ID',
+        code: 'INVALID_GAME_ID'
+      });
+    }
+
+    const result = await gameService.stepAiMove(gameId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: result.error,
+        code: 'AI_STEP_FAILED'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        move: result.move,
+        aiThinking: result.aiThinking,
+        gameState: result.gameState
+      }
+    });
+  } catch (error) {
+    console.error('AI 步进失败:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'AI 步进失败',
+      code: 'AI_STEP_EXECUTION_FAILED'
     });
   }
 });
@@ -250,6 +297,63 @@ router.post('/:gameId/undo', (req: Request, res: Response) => {
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : '悔棋失败',
       code: 'UNDO_EXECUTION_FAILED'
+    });
+  }
+});
+
+/**
+ * GET /api/game/:gameId/valid-moves
+ * 获取指定位置棋子的所有合法走法
+ */
+router.get('/:gameId/valid-moves', (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+    const { x, y } = req.query;
+
+    // 确保gameId是字符串类型
+    if (Array.isArray(gameId)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '无效的游戏ID',
+        code: 'INVALID_GAME_ID'
+      });
+    }
+
+    // 验证坐标参数
+    const posX = parseInt(x as string, 10);
+    const posY = parseInt(y as string, 10);
+
+    if (isNaN(posX) || isNaN(posY)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '坐标参数无效，需要数字类型的 x 和 y',
+        code: 'INVALID_COORDINATES'
+      });
+    }
+
+    const result = gameService.getValidMoves(gameId, { x: posX, y: posY });
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: result.error,
+        code: 'VALID_MOVES_FAILED'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        piece: result.piece,
+        validMoves: result.validMoves
+      }
+    });
+  } catch (error) {
+    console.error('获取有效走法失败:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : '获取有效走法失败',
+      code: 'VALID_MOVES_EXECUTION_FAILED'
     });
   }
 });
@@ -340,18 +444,15 @@ router.delete('/:gameId', (req: Request, res: Response) => {
 
 /**
  * GET /api/game
- * 获取所有游戏ID列表
+ * 获取所有游戏列表（包含简要信息）
  */
 router.get('/', (req: Request, res: Response) => {
   try {
-    const gameIds = gameService.getAllGameIds();
+    const games = gameService.getAllGamesSummary();
 
     res.json({
       success: true,
-      data: {
-        count: gameIds.length,
-        games: gameIds
-      }
+      data: games
     });
   } catch (error) {
     console.error('获取游戏列表失败:', error);
@@ -359,6 +460,310 @@ router.get('/', (req: Request, res: Response) => {
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : '获取游戏列表失败',
       code: 'GET_GAMES_FAILED'
+    });
+  }
+});
+
+/**
+ * POST /api/game/:gameId/pause
+ * 暂停游戏
+ */
+router.post('/:gameId/pause', (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+
+    if (Array.isArray(gameId)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '无效的游戏ID',
+        code: 'INVALID_GAME_ID'
+      });
+    }
+
+    const result = gameService.pauseGame(gameId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: result.error,
+        code: 'PAUSE_FAILED'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.gameState
+    });
+  } catch (error) {
+    console.error('暂停游戏失败:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : '暂停游戏失败',
+      code: 'PAUSE_EXECUTION_FAILED'
+    });
+  }
+});
+
+/**
+ * POST /api/game/:gameId/resume
+ * 继续游戏
+ */
+router.post('/:gameId/resume', (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+
+    if (Array.isArray(gameId)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '无效的游戏ID',
+        code: 'INVALID_GAME_ID'
+      });
+    }
+
+    const result = gameService.resumeGame(gameId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: result.error,
+        code: 'RESUME_FAILED'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.gameState
+    });
+  } catch (error) {
+    console.error('继续游戏失败:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : '继续游戏失败',
+      code: 'RESUME_EXECUTION_FAILED'
+    });
+  }
+});
+
+/**
+ * POST /api/game/:gameId/end
+ * 强制结束游戏
+ */
+router.post('/:gameId/end', (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+    const body = req.body as EndGameRequest;
+
+    if (Array.isArray(gameId)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '无效的游戏ID',
+        code: 'INVALID_GAME_ID'
+      });
+    }
+
+    if (!body.winner || !body.reason) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '缺少必要参数: winner, reason',
+        code: 'MISSING_PARAMETERS'
+      });
+    }
+
+    const result = gameService.endGame(gameId, body.winner, body.reason);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: result.error,
+        code: 'END_GAME_FAILED'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.gameState
+    });
+  } catch (error) {
+    console.error('结束游戏失败:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : '结束游戏失败',
+      code: 'END_GAME_EXECUTION_FAILED'
+    });
+  }
+});
+
+/**
+ * GET /api/game/:gameId/notation
+ * 获取棋谱
+ */
+router.get('/:gameId/notation', (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+
+    if (Array.isArray(gameId)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '无效的游戏ID',
+        code: 'INVALID_GAME_ID'
+      });
+    }
+
+    const result = gameService.getNotation(gameId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: result.error,
+        code: 'NOTATION_FAILED'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        notation: result.notation
+      }
+    });
+  } catch (error) {
+    console.error('获取棋谱失败:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : '获取棋谱失败',
+      code: 'NOTATION_EXECUTION_FAILED'
+    });
+  }
+});
+
+/**
+ * GET /api/game/:gameId/debug
+ * 获取调试信息
+ */
+router.get('/:gameId/debug', (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+
+    if (Array.isArray(gameId)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '无效的游戏ID',
+        code: 'INVALID_GAME_ID'
+      });
+    }
+
+    const result = gameService.getDebugInfo(gameId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: result.error,
+        code: 'DEBUG_INFO_FAILED'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.debug
+    });
+  } catch (error) {
+    console.error('获取调试信息失败:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : '获取调试信息失败',
+      code: 'DEBUG_INFO_EXECUTION_FAILED'
+    });
+  }
+});
+
+/**
+ * GET /api/game/:gameId/fen
+ * 导出 FEN 棋局
+ */
+router.get('/:gameId/fen', (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+
+    if (Array.isArray(gameId)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '无效的游戏ID',
+        code: 'INVALID_GAME_ID'
+      });
+    }
+
+    const result = gameService.getFen(gameId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: result.error,
+        code: 'FEN_EXPORT_FAILED'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        fen: result.fen
+      }
+    });
+  } catch (error) {
+    console.error('导出 FEN 失败:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : '导出 FEN 失败',
+      code: 'FEN_EXPORT_EXECUTION_FAILED'
+    });
+  }
+});
+
+/**
+ * POST /api/game/:gameId/fen
+ * 导入 FEN 棋局
+ */
+router.post('/:gameId/fen', (req: Request, res: Response) => {
+  try {
+    const { gameId } = req.params;
+    const { fen } = req.body;
+
+    if (Array.isArray(gameId)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '无效的游戏ID',
+        code: 'INVALID_GAME_ID'
+      });
+    }
+
+    if (!fen || typeof fen !== 'string') {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: '缺少 FEN 字符串',
+        code: 'MISSING_FEN'
+      });
+    }
+
+    const result = gameService.setFromFen(gameId, fen);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: result.error,
+        code: 'FEN_IMPORT_FAILED'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        gameState: result.gameState
+      }
+    });
+  } catch (error) {
+    console.error('导入 FEN 失败:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : '导入 FEN 失败',
+      code: 'FEN_IMPORT_EXECUTION_FAILED'
     });
   }
 });

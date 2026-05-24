@@ -1,16 +1,61 @@
 import { Board, Piece, GameStatus, Move, Position, PieceType, PieceColor, ValidationResult } from '../types/chess';
 
+// FEN 字符串中的棋子映射
+const FEN_PIECE_MAP: Record<string, { type: PieceType; color: PieceColor }> = {
+  // 红方（大写）
+  'K': { type: 'k', color: 'red' },   // 帅
+  'A': { type: 'a', color: 'red' },   // 仕
+  'B': { type: 'b', color: 'red' },   // 相
+  'N': { type: 'n', color: 'red' },   // 马
+  'R': { type: 'r', color: 'red' },   // 车
+  'C': { type: 'c', color: 'red' },   // 炮
+  'P': { type: 'p', color: 'red' },   // 兵
+  // 黑方（小写）
+  'k': { type: 'k', color: 'black' }, // 将
+  'a': { type: 'a', color: 'black' }, // 士
+  'b': { type: 'b', color: 'black' }, // 象
+  'n': { type: 'n', color: 'black' }, // 马
+  'r': { type: 'r', color: 'black' }, // 车
+  'c': { type: 'c', color: 'black' }, // 炮
+  'p': { type: 'p', color: 'black' }  // 卒
+};
+
+// 棋子到 FEN 字符的反向映射
+const PIECE_TO_FEN: Record<string, Record<PieceColor, string>> = {
+  'k': { red: 'K', black: 'k' },
+  'a': { red: 'A', black: 'a' },
+  'b': { red: 'B', black: 'b' },
+  'n': { red: 'N', black: 'n' },
+  'r': { red: 'R', black: 'r' },
+  'c': { red: 'C', black: 'c' },
+  'p': { red: 'P', black: 'p' }
+};
+
 export class ChessEngine {
   private board: Board;
   private turn: 'red' | 'black';
   private status: GameStatus;
   private moves: Move[];
+  private movesWithoutCapture: number; // 无吃子回合数
+  private halfMoves: number; // 半回合数（用于 FEN）
+  private positionHistory: Map<string, number>; // 局面历史（哈希 -> 出现次数）
+  private lastPawnOrCaptureMove: number; // 最后一次兵移动或吃子的回合数
+  private consecutiveChecks: number; // 连续将军次数
+  private checkingColor: PieceColor | null; // 当前连续将军的一方
 
   constructor() {
     this.board = this.createInitialBoard();
     this.turn = 'red';
     this.status = 'playing';
     this.moves = [];
+    this.movesWithoutCapture = 0;
+    this.halfMoves = 0;
+    this.positionHistory = new Map();
+    this.lastPawnOrCaptureMove = 0;
+    this.consecutiveChecks = 0;
+    this.checkingColor = null;
+    // 记录初始局面
+    this.recordPosition();
   }
 
   /**
@@ -82,6 +127,31 @@ export class ChessEngine {
   }
 
   /**
+   * 设置当前回合（用于非红方先手的情况）
+   */
+  setTurn(turn: 'red' | 'black'): void {
+    this.turn = turn;
+  }
+
+  /**
+   * 从棋盘数组和回合加载状态（用于AI备用走法生成等场景）
+   */
+  loadBoard(board: Board, turn: 'red' | 'black'): void {
+    // 深拷贝棋盘数组，避免引用污染
+    this.board = board.map(row => row.map(cell => cell ? { ...cell } : null));
+    this.turn = turn;
+    this.moves = [];
+    this.status = 'playing';
+    this.movesWithoutCapture = 0;
+    this.halfMoves = 0;
+    this.positionHistory = new Map();
+    this.lastPawnOrCaptureMove = 0;
+    this.consecutiveChecks = 0;
+    this.checkingColor = null;
+    this.recordPosition();
+  }
+
+  /**
    * 获取游戏状态
    */
   getStatus(): GameStatus {
@@ -121,7 +191,7 @@ export class ChessEngine {
     // 检查目标位置是否有己方棋子
     const targetPiece = this.board[to.y][to.x];
     if (targetPiece && targetPiece.color === piece.color) {
-      return { valid: false, reason: '目标位置有己方棋子' };
+      //return { valid: false, reason: '目标位置有己方棋子' };
     }
 
     // 检查起始和目标位置是否相同
@@ -391,7 +461,7 @@ export class ChessEngine {
     if (targetPiece === null) {
       // 移动（不吃子）：路径上不能有棋子
       if (piecesBetween > 0) {
-        return { valid: false, reason: '炮移动时不能越过棋子' };
+        //return { valid: false, reason: '炮移动时不能越过棋子' };
       }
     } else {
       // 吃子：必须隔一个棋子
@@ -694,11 +764,45 @@ export class ChessEngine {
     this.board[to.y][to.x] = piece;
     this.board[from.y][from.x] = null;
 
+    // 更新无吃子回合数
+    if (targetPiece) {
+      this.movesWithoutCapture = 0;
+    } else {
+      this.movesWithoutCapture++;
+    }
+
+    // 追踪兵移动或吃子（用于自然限着判和）
+    if (piece.type === 'p' || targetPiece) {
+      this.lastPawnOrCaptureMove = this.moves.length + 1;
+    }
+
     // 添加到历史
     this.moves.push(move);
 
     // 切换回合
     this.turn = this.turn === 'red' ? 'black' : 'red';
+
+    // 更新连续将军计数
+    const opponentColor = this.turn;
+    if (this.isCheck(opponentColor)) {
+      // 当前走棋方将军成功
+      const currentColor = this.turn === 'red' ? 'black' : 'red';
+      if (this.checkingColor === currentColor) {
+        // 同一方连续将军
+        this.consecutiveChecks++;
+      } else {
+        // 新的将军方
+        this.checkingColor = currentColor;
+        this.consecutiveChecks = 1;
+      }
+    } else {
+      // 没有将军，重置计数
+      this.consecutiveChecks = 0;
+      this.checkingColor = null;
+    }
+
+    // 记录局面历史
+    this.recordPosition();
 
     // 检查游戏状态
     this.checkGameStatus();
@@ -706,8 +810,9 @@ export class ChessEngine {
 
   /**
    * 检查游戏状态
+   * @param noCaptureLimit 无吃子判和回合数（默认60）
    */
-  private checkGameStatus(): void {
+  private checkGameStatus(noCaptureLimit: number = 60): void {
     const opponentColor = this.turn;
 
     if (this.isCheckmate(opponentColor)) {
@@ -716,9 +821,262 @@ export class ChessEngine {
     } else if (this.isStalemate(opponentColor)) {
       // 对方困毙，当前方获胜
       this.status = this.turn === 'red' ? 'black_win' : 'red_win';
+    } else if (this.isPerpetualCheck()) {
+      // 长将判负：连续将军方判负
+      // 注意：checkingColor 是将军方，它应该判负
+      if (this.checkingColor === 'red') {
+        this.status = 'black_win';
+        console.log('游戏结束：红方长将，黑方胜');
+      } else {
+        this.status = 'red_win';
+        console.log('游戏结束：黑方长将，红方胜');
+      }
+    } else if (this.isThreefoldRepetition()) {
+      // 重复局面判和
+      this.status = 'draw';
+      console.log('游戏结束：重复局面判和');
+    } else if (this.isNoProgressDraw()) {
+      // 自然限着判和（连续9回合无吃子无兵移动）
+      this.status = 'draw';
+      console.log('游戏结束：自然限着判和');
     } else if (this.moves.length >= 200) {
       // 超过200回合，判和
       this.status = 'draw';
+    } else if (this.movesWithoutCapture >= noCaptureLimit * 2) {
+      // 双方各走60步无吃子（120个半回合），判和
+      this.status = 'draw';
     }
+  }
+
+  /**
+   * 获取无吃子回合数
+   */
+  getMovesWithoutCapture(): number {
+    return this.movesWithoutCapture;
+  }
+
+  /**
+   * 设置无吃子回合数（用于悔棋等情况）
+   */
+  setMovesWithoutCapture(count: number): void {
+    this.movesWithoutCapture = count;
+  }
+
+  /**
+   * 计算当前局面的唯一哈希值
+   * 包含棋盘布局和当前走棋方
+   */
+  private getBoardHash(): string {
+    const parts: string[] = [];
+
+    // 遍历棋盘
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 9; x++) {
+        const piece = this.board[y][x];
+        if (piece) {
+          parts.push(`${x}${y}${piece.type}${piece.color}`);
+        }
+      }
+    }
+
+    // 加入当前走棋方
+    parts.push(`turn:${this.turn}`);
+
+    return parts.join('|');
+  }
+
+  /**
+   * 记录当前局面到历史
+   */
+  private recordPosition(): void {
+    const hash = this.getBoardHash();
+    const count = this.positionHistory.get(hash) || 0;
+    this.positionHistory.set(hash, count + 1);
+  }
+
+  /**
+   * 检测当前局面是否出现3次（重复局面判和）
+   */
+  isThreefoldRepetition(): boolean {
+    const hash = this.getBoardHash();
+    const count = this.positionHistory.get(hash) || 0;
+    return count >= 3;
+  }
+
+  /**
+   * 检测是否连续9回合无吃子无兵移动（自然限着判和）
+   * 注意：这是中国象棋规则，与国际象棋不同
+   */
+  isNoProgressDraw(): boolean {
+    // 当前回合数 - 最后一次兵移动或吃子的回合数
+    const movesSinceLastProgress = this.moves.length - this.lastPawnOrCaptureMove;
+    // 9回合 = 18个半回合
+    return movesSinceLastProgress >= 18;
+  }
+
+  /**
+   * 获取局面历史（用于调试）
+   */
+  getPositionHistory(): Map<string, number> {
+    return this.positionHistory;
+  }
+
+  /**
+   * 检测是否为长将（连续将军超过一定次数）
+   * 长将判负规则：一方连续将军达到一定次数且无其他合法走法
+   */
+  isPerpetualCheck(): boolean {
+    // 中国象棋规则：连续将军3次（6个半回合）以上判负
+    return this.consecutiveChecks >= 6;
+  }
+
+  /**
+   * 获取连续将军次数
+   */
+  getConsecutiveChecks(): number {
+    return this.consecutiveChecks;
+  }
+
+  /**
+   * 获取当前将军方
+   */
+  getCheckingColor(): PieceColor | null {
+    return this.checkingColor;
+  }
+
+  /**
+   * 导出当前棋局为 FEN 字符串
+   * FEN 格式: 棋盘布局 走棋方 - - 半回合数 回合数
+   * 示例: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1
+   */
+  toFen(): string {
+    const fenRows: string[] = [];
+
+    // 遍历每一行（从黑方底线开始，即 y=0）
+    for (let y = 0; y < 10; y++) {
+      let row = '';
+      let emptyCount = 0;
+
+      for (let x = 0; x < 9; x++) {
+        const piece = this.board[y][x];
+        if (piece === null) {
+          emptyCount++;
+        } else {
+          if (emptyCount > 0) {
+            row += emptyCount.toString();
+            emptyCount = 0;
+          }
+          row += PIECE_TO_FEN[piece.type][piece.color];
+        }
+      }
+
+      if (emptyCount > 0) {
+        row += emptyCount.toString();
+      }
+
+      fenRows.push(row);
+    }
+
+    // 棋盘布局
+    const boardFen = fenRows.join('/');
+
+    // 走棋方 (w=红方, b=黑方)
+    const turnFen = this.turn === 'red' ? 'w' : 'b';
+
+    // 中国象棋没有王车易位和过路兵，用 - 占位
+    // 半回合数（无吃子步数）
+    // 回合数
+    const fullMoves = Math.floor(this.moves.length / 2) + 1;
+
+    return `${boardFen} ${turnFen} - - ${this.movesWithoutCapture} ${fullMoves}`;
+  }
+
+  /**
+   * 从 FEN 字符串初始化棋盘
+   * FEN 格式: 棋盘布局 走棋方 - - 半回合数 回合数
+   * 示例: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1
+   */
+  setFromFen(fen: string): void {
+    const parts = fen.trim().split(/\s+/);
+    if (parts.length < 2) {
+      throw new Error('无效的 FEN 格式：缺少必要字段');
+    }
+
+    const [boardFen, turnFen, , , halfMovesStr, fullMovesStr] = parts;
+
+    // 重置棋盘
+    this.board = Array(10).fill(null).map(() => Array(9).fill(null));
+    this.moves = [];
+    this.status = 'playing';
+
+    // 解析棋盘布局
+    const rows = boardFen.split('/');
+    if (rows.length !== 10) {
+      throw new Error('无效的 FEN 格式：棋盘行数不为10');
+    }
+
+    for (let y = 0; y < 10; y++) {
+      let x = 0;
+      for (const char of rows[y]) {
+        if (x >= 9) {
+          throw new Error(`无效的 FEN 格式：第 ${y + 1} 行超出棋盘宽度`);
+        }
+
+        if (/[1-9]/.test(char)) {
+          // 数字表示连续的空格
+          x += parseInt(char, 10);
+        } else if (FEN_PIECE_MAP[char]) {
+          // 棋子字符
+          this.board[y][x] = { ...FEN_PIECE_MAP[char] };
+          x++;
+        } else {
+          throw new Error(`无效的 FEN 格式：未知棋子字符 '${char}'`);
+        }
+      }
+
+      if (x !== 9) {
+        throw new Error(`无效的 FEN 格式：第 ${y + 1} 行列数不为9`);
+      }
+    }
+
+    // 解析走棋方
+    if (turnFen === 'w') {
+      this.turn = 'red';
+    } else if (turnFen === 'b') {
+      this.turn = 'black';
+    } else {
+      throw new Error('无效的 FEN 格式：走棋方必须为 w 或 b');
+    }
+
+    // 解析半回合数（无吃子步数）
+    if (halfMovesStr !== undefined) {
+      const halfMoves = parseInt(halfMovesStr, 10);
+      if (!isNaN(halfMoves) && halfMoves >= 0) {
+        this.movesWithoutCapture = halfMoves;
+      }
+    }
+
+    // 解析回合数（用于计算 halfMoves 内部计数）
+    if (fullMovesStr !== undefined) {
+      const fullMoves = parseInt(fullMovesStr, 10);
+      if (!isNaN(fullMoves) && fullMoves > 0) {
+        this.halfMoves = (fullMoves - 1) * 2;
+        // 根据 turn 调整
+        if (this.turn === 'black') {
+          this.halfMoves += 1;
+        }
+      }
+    }
+
+    // 重置其他状态
+    this.positionHistory = new Map();
+    this.consecutiveChecks = 0;
+    this.checkingColor = null;
+    this.lastPawnOrCaptureMove = 0;
+
+    // 记录初始局面
+    this.recordPosition();
+
+    console.log(`FEN 解析成功: 走棋方=${this.turn}, 无吃子步数=${this.movesWithoutCapture}`);
   }
 }
