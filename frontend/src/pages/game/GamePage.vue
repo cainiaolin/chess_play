@@ -84,8 +84,10 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import ChessBoard from '../../components/ChessBoard/ChessBoard.vue'
 import { gameApi } from '../../utils/api'
 import { useConfigStore } from '../../stores/config'
+import { ChessEngine } from '../../utils/chess-engine'
 
 const configStore = useConfigStore()
+const localEngine = new ChessEngine()
 
 const gameId = ref(null)
 const gameState = ref(null)
@@ -199,17 +201,14 @@ function buildCreatePayload() {
   }
 }
 
-async function fetchValidMoves(piece) {
-  if (!gameId.value) return []
-  try {
-    const res = await gameApi.getValidMoves(gameId.value, piece.x, piece.y)
-    if (res.success && res.data?.validMoves?.length) {
-      return res.data.validMoves
-    }
-  } catch (e) {
-    console.warn('获取合法走法失败', e)
+function syncEngine(state) {
+  if (state?.board) {
+    localEngine.loadBoard(state.board, state.turn || 'red')
   }
-  return []
+}
+
+function getLocalValidMoves(piece) {
+  return localEngine.getValidMovesForPosition({ x: piece.x, y: piece.y }).map(pos => ({ to: pos }))
 }
 
 async function drainAiUntilHuman(runId) {
@@ -239,6 +238,7 @@ async function drainAiUntilHuman(runId) {
         break
       }
       gameState.value = res.data.gameState
+      syncEngine(res.data.gameState)
       const moves = res.data.gameState?.moves || []
       if (moves.length) lastMove.value = moves[moves.length - 1]
       if (res.data.aiThinking || res.data.move) {
@@ -283,6 +283,7 @@ async function runAiVsAiLoop(runId) {
         break
       }
       gameState.value = res.data.gameState
+      syncEngine(res.data.gameState)
       const moves = res.data.gameState?.moves || []
       if (moves.length) lastMove.value = moves[moves.length - 1]
       if (res.data.aiThinking || res.data.move) {
@@ -321,6 +322,7 @@ async function initGame() {
     if (result.success && result.data) {
       gameId.value = result.data.id
       gameState.value = result.data
+      syncEngine(result.data)
       selectedPiece.value = null
       validMoves.value = []
       lastMove.value = null
@@ -341,42 +343,79 @@ async function initGame() {
 async function handleCellClick({ x, y, piece }) {
   if (isSpectator.value) return
   if (isAIThinking.value) return
-  if (currentTurn.value !== humanSide.value) return
+  if (currentTurn.value !== humanSide.value) {
+    showMoveTip('不是该方回合')
+    return
+  }
 
   try {
     if (selectedPiece.value) {
       const isValidMove = validMoves.value.some((m) => m.to?.x === x && m.to?.y === y)
 
       if (isValidMove) {
-        const result = await gameApi.move(gameId.value, {
-          from: { x: selectedPiece.value.x, y: selectedPiece.value.y },
-          to: { x, y },
-          player: currentTurn.value
-        })
+        const from = { x: selectedPiece.value.x, y: selectedPiece.value.y }
+        const movePiece = selectedPiece.value
 
-        if (result.success) {
-          gameState.value = result.data.gameState || result.data
-          lastMove.value = result.data.move
-          selectedPiece.value = null
-          validMoves.value = []
-
-          if (result.data.aiMove) {
-            const totalMoves = result.data.gameState?.moves?.length || 0
-            addAiLog(result.data.aiMove, totalMoves)
-          }
-        } else {
-          throw new Error(result.message || '走棋失败')
+        // 乐观更新：立即在前端移动棋子
+        const prevBoard = gameState.value.board
+        const prevTurn = gameState.value.turn
+        const boardCopy = prevBoard.map(row => [...row])
+        boardCopy[y][x] = { type: movePiece.type, color: movePiece.color }
+        boardCopy[from.y][from.x] = null
+        gameState.value = {
+          ...gameState.value,
+          board: boardCopy,
+          turn: prevTurn === 'red' ? 'black' : 'red'
         }
+        syncEngine(gameState.value)
+        lastMove.value = { from, to: { x, y }, piece: movePiece.type }
+        selectedPiece.value = null
+        validMoves.value = []
+
+        // 后台发送走法，等待 AI 响应
+        isAIThinking.value = true
+        try {
+          const result = await gameApi.move(gameId.value, {
+            from,
+            to: { x, y },
+            player: prevTurn
+          })
+
+          if (result.success) {
+            gameState.value = result.data.gameState || result.data
+            syncEngine(gameState.value)
+            lastMove.value = result.data.move
+            if (result.data.aiMove) {
+              const totalMoves = result.data.gameState?.moves?.length || 0
+              addAiLog(result.data.aiMove, totalMoves)
+            }
+          } else {
+            // 走法被后端拒绝，回滚乐观更新
+            gameState.value = { ...gameState.value, board: prevBoard, turn: prevTurn }
+            syncEngine(gameState.value)
+            throw new Error(result.message || '走棋失败')
+          }
+        } catch (error) {
+          // 任何错误都回滚到乐观更新前的状态
+          gameState.value = { ...gameState.value, board: prevBoard, turn: prevTurn }
+          syncEngine(gameState.value)
+          console.error('走棋错误:', error)
+          errorMessage.value = error.message || '走棋失败'
+          setTimeout(() => { errorMessage.value = '' }, 3000)
+        } finally {
+          isAIThinking.value = false
+        }
+        return
       } else if (piece && piece.color === humanSide.value) {
         selectedPiece.value = { x, y, ...piece }
-        validMoves.value = await fetchValidMoves({ x, y, ...piece })
+        validMoves.value = await getLocalValidMoves({ x, y, ...piece })
       } else {
         showMoveTip('不支持的走法')
       }
     } else {
       if (piece && piece.color === humanSide.value) {
         selectedPiece.value = { x, y, ...piece }
-        validMoves.value = await fetchValidMoves({ x, y, ...piece })
+        validMoves.value = await getLocalValidMoves({ x, y, ...piece })
       }
     }
   } catch (error) {
@@ -395,6 +434,7 @@ async function handleUndo() {
     const result = await gameApi.undo(gameId.value)
     if (result.success) {
       gameState.value = result.data
+      syncEngine(result.data)
       selectedPiece.value = null
       validMoves.value = []
       // 撤销最后一条 AI 日志
