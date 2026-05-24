@@ -85,10 +85,42 @@ ${historyToString(request.history) || '无'}
 }
 
 function parseResponse(content: string): AIResponse {
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('无法解析AI响应');
-  const parsed = JSON.parse(jsonMatch[0]);
-  return { from: parsed.from, to: parsed.to, thinking: parsed.thinking };
+  // 提取 JSON：优先匹配 ```json ``` 代码块，再匹配裸 JSON
+  let jsonStr: string | undefined;
+
+  const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    jsonStr = codeBlockMatch[1].trim();
+  } else {
+    const bareMatch = content.match(/\{[\s\S]*\}/);
+    jsonStr = bareMatch?.[0];
+  }
+
+  if (!jsonStr) throw new Error('无法解析AI响应: 未找到JSON');
+
+  // 清理常见格式问题
+  jsonStr = jsonStr
+    .replace(/\/\/.*$/gm, '')        // 移除单行注释
+    .replace(/,(\s*[}\]])/g, '$1')   // 移除尾部逗号
+    .replace(/\r\n/g, '\n')
+    .trim();
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    throw new Error(`无法解析AI响应: JSON格式错误 (${jsonStr.slice(0, 100)})`);
+  }
+
+  const from = parsed.from || parsed.source || parsed.start;
+  const to = parsed.to || parsed.target || parsed.end;
+  if (!from || !to) throw new Error('AI响应缺少from/to字段');
+
+  return {
+    from: { x: Number(from.x), y: Number(from.y) },
+    to: { x: Number(to.x), y: Number(to.y) },
+    thinking: parsed.thinking || parsed.reason || ''
+  };
 }
 
 // ── LLM Provider（通用 OpenAI 兼容接口） ─────────────────────────────

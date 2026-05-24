@@ -360,30 +360,9 @@ async function handleCellClick({ x, y, piece }) {
           selectedPiece.value = null
           validMoves.value = []
 
-          // 记录 AI 响应
           if (result.data.aiMove) {
             const totalMoves = result.data.gameState?.moves?.length || 0
             addAiLog(result.data.aiMove, totalMoves)
-
-            isAIThinking.value = true
-            try {
-              const freshState = await gameApi.get(gameId.value)
-              if (freshState.success && freshState.data) {
-                gameState.value = freshState.data
-                const moves = freshState.data.moves || []
-                if (moves.length > 0) {
-                  lastMove.value = moves[moves.length - 1]
-                }
-              }
-            } catch (e) {
-              console.error('刷新游戏状态失败，使用返回的状态:', e)
-              if (result.data.gameState) {
-                gameState.value = result.data.gameState
-                lastMove.value = result.data.aiMove
-              }
-            } finally {
-              isAIThinking.value = false
-            }
           }
         } else {
           throw new Error(result.message || '走棋失败')
