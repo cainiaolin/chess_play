@@ -387,7 +387,7 @@ export class GameService {
           history: engine.getMoves()
         };
 
-        const aiResponse = await this.aiAdapter.getMove(undefined, aiRequest);
+        const aiResponse = await this.aiAdapter.getMove(undefined, aiRequest, undefined, undefined, attempt);
 
         // 执行AI走法
         engine.makeMove(aiResponse.from, aiResponse.to);

@@ -1,126 +1,122 @@
 import 'dotenv/config';
-import { Board, Move, AIRequest, AIResponse, AIModel, PieceType } from '../types/chess';
+import { Board, Move, AIRequest, AIResponse, AIModel } from '../types/chess';
 import { ChessEngine } from './chess-engine';
-import * as fs from 'fs';
-import * as path from 'path';
+import { buildMessages } from './chess-prompt-builder';
 
-// ── 模块级工具函数 ──────────────────────────────────────────────────────
+/**
+ * AI 适配器（强化版）
+ *
+ * 设计理念：纯 LLM 多步推理。
+ * - 通过结构化五段式 CoT（思维链）prompt 引导 LLM 深度推理
+ * - 战略知识库 + 局面上下文（FEN/棋谱/子力/阶段）多维度输入
+ * - 单次深度调用（temperature=0.3 提升确定性，max_tokens=4000 给足推理空间）
+ * - LLM 输出非法走法时纯重试（最多 N 次），不向 LLM 暴露合法走法
+ *
+ * 调用链：AIRequest → buildMessages → LLMProvider.getMove → parseCoTResponse → 合法性校验
+ */
 
-let cachedChessRules: string | null = null;
+// ── CoT 响应解析 ──────────────────────────────────────────────────────
 
-function getChessRules(): string {
-  if (cachedChessRules) return cachedChessRules;
-  try {
-    cachedChessRules = fs.readFileSync(path.join(__dirname, '../prompts/chess-rules.md'), 'utf-8');
-  } catch {
-    cachedChessRules = getBuiltInRules();
-  }
-  return cachedChessRules;
-}
-
-function getBuiltInRules(): string {
-  return `# 中国象棋规则
-
-## 棋子走法
-- 帅/将(k): 九宫格内，横竖移动一格，不能对面
-- 仕/士(a): 九宫格内，斜线移动一格
-- 相/象(b): 走"田"字对角，不能过河，中心有子则塞象眼
-- 马(n): 走"日"字形，第一步有子则蹩马腿
-- 车(r): 横竖直线移动任意格，不能越子
-- 炮(c): 移动同车，吃子必须隔一子（炮架）
-- 兵/卒(p): 过河前只能前进，过河后可前进或横走，每次一格
-
-## 坐标系统
-- x: 列(0-8), y: 行(0-9)
-- 红方在底部(y=5-9)，黑方在顶部(y=0-4)
-
-## 输出格式
-必须返回JSON: {"from":{"x":0-8,"y":0-9},"to":{"x":0-8,"y":0-9},"thinking":"思考过程"}`;
-}
-
-const PIECE_NAMES_RED: Record<PieceType, string> = {
-  k: '将', a: '士', b: '象', n: '马', r: '车', c: '炮', p: '兵'
-};
-const PIECE_NAMES_BLACK: Record<PieceType, string> = {
-  k: '帅', a: '仕', b: '相', n: '马', r: '车', c: '炮', p: '卒'
-};
-
-function boardToString(board: Board): string {
-  let str = '   0 1 2 3 4 5 6 7 8\n';
-  for (let y = 0; y < 10; y++) {
-    str += y + ' ';
-    for (let x = 0; x < 9; x++) {
-      const piece = board[y][x];
-      if (piece) {
-        str += (piece.color === 'red' ? PIECE_NAMES_RED[piece.type] : PIECE_NAMES_BLACK[piece.type]) + ' ';
-      } else {
-        str += '· ';
-      }
-    }
-    str += '\n';
-  }
-  return str;
-}
-
-function historyToString(history: Move[]): string {
-  return history.map((m, i) => `${i + 1}. (${m.from.x},${m.from.y}) -> (${m.to.x},${m.to.y})`).join('\n');
-}
-
-function buildPrompt(request: AIRequest): string {
-  const roleStr = request.role === 'red' ? '红方' : '黑方';
-  return `当前棋盘状态：
-${boardToString(request.board)}
-
-当前执子：${roleStr}
-
-历史走法：
-${historyToString(request.history) || '无'}
-
-请分析当前棋局，给出最佳走法。必须返回JSON格式：
-{
-  "from": {"x": 列号0-8, "y": 行号0-9},
-  "to": {"x": 列号0-8, "y": 行号0-9},
-  "thinking": "简要说明你的思考过程"
-}`;
-}
-
-function parseResponse(content: string): AIResponse {
-  // 提取 JSON：优先匹配 ```json ``` 代码块，再匹配裸 JSON
-  let jsonStr: string | undefined;
-
+/**
+ * 从 LLM 原始输出中提取 JSON 对象字符串。
+ * 优先匹配 ```json ``` 代码块，回退到裸 JSON。
+ */
+function extractJsonString(content: string): string | undefined {
   const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    jsonStr = codeBlockMatch[1].trim();
-  } else {
-    const bareMatch = content.match(/\{[\s\S]*\}/);
-    jsonStr = bareMatch?.[0];
-  }
+  if (codeBlockMatch) return codeBlockMatch[1].trim();
 
-  if (!jsonStr) throw new Error('无法解析AI响应: 未找到JSON');
+  const bareMatch = content.match(/\{[\s\S]*\}/);
+  return bareMatch?.[0];
+}
 
-  // 清理常见格式问题
-  jsonStr = jsonStr
+/**
+ * 清理 JSON 字符串中常见的格式问题（注释、尾逗号、CRLF）。
+ */
+function sanitizeJson(jsonStr: string): string {
+  return jsonStr
     .replace(/\/\/.*$/gm, '')        // 移除单行注释
+    .replace(/\/\*[\s\S]*?\*\//g, '') // 移除多行注释
     .replace(/,(\s*[}\]])/g, '$1')   // 移除尾部逗号
     .replace(/\r\n/g, '\n')
     .trim();
+}
+
+/**
+ * 从任意位置提取坐标对象（兼容 from/source/start 与 to/target/end）。
+ */
+function extractCoordinate(obj: any, keys: string[]): { x: number; y: number } | null {
+  for (const key of keys) {
+    const v = obj[key];
+    if (v && typeof v.x !== 'undefined' && typeof v.y !== 'undefined') {
+      return { x: Number(v.x), y: Number(v.y) };
+    }
+  }
+  return null;
+}
+
+interface ParsedCoT {
+  decision: { from: { x: number; y: number }; to: { x: number; y: number } };
+  thinking: string;
+}
+
+/**
+ * 解析五段式 CoT 响应，提取最终决策与推理摘要。
+ *
+ * 优先取 step5_decision；缺失时回退到 step4_evaluation.best_candidate_index
+ * 指向的候选；再缺失时回退到顶层 from/to（兼容非标准输出）。
+ */
+function parseCoTResponse(content: string): ParsedCoT {
+  const jsonStr = extractJsonString(content);
+  if (!jsonStr) throw new Error('无法解析 AI 响应: 未找到 JSON');
 
   let parsed: any;
   try {
-    parsed = JSON.parse(jsonStr);
+    parsed = JSON.parse(sanitizeJson(jsonStr));
   } catch {
-    throw new Error(`无法解析AI响应: JSON格式错误 (${jsonStr.slice(0, 100)})`);
+    throw new Error(`无法解析 AI 响应: JSON 格式错误 (${jsonStr.slice(0, 120)})`);
   }
 
-  const from = parsed.from || parsed.source || parsed.start;
-  const to = parsed.to || parsed.target || parsed.end;
-  if (!from || !to) throw new Error('AI响应缺少from/to字段');
+  // 路径1：标准 step5_decision
+  let from: { x: number; y: number } | null = null;
+  let to: { x: number; y: number } | null = null;
 
-  return {
-    from: { x: Number(from.x), y: Number(from.y) },
-    to: { x: Number(to.x), y: Number(to.y) },
-    thinking: parsed.thinking || parsed.reason || ''
-  };
+  const decision = parsed.step5_decision;
+  if (decision) {
+    from = extractCoordinate(decision, ['from', 'source', 'start']);
+    to = extractCoordinate(decision, ['to', 'target', 'end']);
+  }
+
+  // 路径2：通过 best_candidate_index 取候选
+  if ((!from || !to) && Array.isArray(parsed.step3_candidates)) {
+    const idx = parsed.step4_evaluation?.best_candidate_index;
+    if (typeof idx === 'number' && parsed.step3_candidates[idx]) {
+      const cand = parsed.step3_candidates[idx];
+      from = from || extractCoordinate(cand, ['from', 'source', 'start']);
+      to = to || extractCoordinate(cand, ['to', 'target', 'end']);
+    }
+  }
+
+  // 路径3：顶层 from/to 兼容
+  if (!from) from = extractCoordinate(parsed, ['from', 'source', 'start']);
+  if (!to) to = extractCoordinate(parsed, ['to', 'target', 'end']);
+
+  if (!from || !to) {
+    throw new Error('AI 响应缺少合法的 from/to 决策字段');
+  }
+
+  // 校验坐标为有限数字
+  if (!Number.isFinite(from.x) || !Number.isFinite(from.y) ||
+      !Number.isFinite(to.x) || !Number.isFinite(to.y)) {
+    throw new Error('AI 响应坐标非法');
+  }
+
+  // 组装 thinking 摘要（截断防止过长）
+  const reasoning = parsed.step4_evaluation?.reasoning || '';
+  const thinking = typeof reasoning === 'string' && reasoning.length > 0
+    ? reasoning.slice(0, 500)
+    : '';
+
+  return { decision: { from, to }, thinking };
 }
 
 // ── LLM Provider（通用 OpenAI 兼容接口） ─────────────────────────────
@@ -140,34 +136,31 @@ class LLMProvider {
     this.model = model;
   }
 
-  async getMove(request: AIRequest): Promise<AIResponse> {
-    const prompt = buildPrompt(request);
-    const chessRules = getChessRules();
-    const systemPrompt = `你是一个中国象棋专家。请严格遵循以下规则进行对弈。
-
-${chessRules}
-
-**重要提醒**：
-1. 你必须严格遵守上述所有棋子走法规则
-2. 只能返回合法的走法，不能返回非法走法
-3. 输出必须是严格的JSON格式`;
-
+  /**
+   * 调用 LLM 获取走法决策。
+   * 单次深度 CoT 推理。attempt 控制采样温度：
+   * 首次低温保稳定；重试时递增温度引入多样性，避免重复犯同一坐标错误。
+   */
+  async getMove(request: AIRequest, attempt: number = 0): Promise<AIResponse> {
+    const messages = buildMessages(request);
     const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
+
+    // 温度阶梯：0.15 → 0.40 → 0.65 → 0.90，重试时跳出错误采样模式
+    const temperature = Math.min(0.15 + attempt * 0.25, 0.9);
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
+        'Authorization': `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
         model: this.model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 500
-      })
+        messages,
+        temperature,
+        top_p: 0.9,
+        max_tokens: 4000,     // 留足五段式 CoT 推理空间
+      }),
     });
 
     if (!response.ok) {
@@ -181,7 +174,12 @@ ${chessRules}
       || data.response;
     if (!content) throw new Error('LLM 响应内容为空');
 
-    return parseResponse(content);
+    const parsed = parseCoTResponse(content);
+    return {
+      from: parsed.decision.from,
+      to: parsed.decision.to,
+      thinking: parsed.thinking,
+    };
   }
 }
 
@@ -192,7 +190,7 @@ export class AIAdapter {
   private timeout: number;
 
   constructor() {
-    this.timeout = parseInt(process.env.AI_TIMEOUT_MS || '30000', 10);
+    this.timeout = parseInt(process.env.AI_TIMEOUT_MS || '60000', 10);
 
     const provider = (process.env.AI_PROVIDER || 'deepseek').toLowerCase();
     const baseUrl = process.env.AI_BASE_URL || '';
@@ -212,23 +210,36 @@ export class AIAdapter {
       id: this.provider.id,
       name: this.provider.name,
       provider: this.provider.id as any,
-      requiresApiKey: false
+      requiresApiKey: false,
     }];
   }
 
-  async getMove(providerId?: string, request?: AIRequest, _apiKey?: string, _baseUrl?: string): Promise<AIResponse> {
+  /**
+   * 获取 AI 走法。
+   * 由 game-service 控制重试循环（默认 3 次），此处仅做合法性校验。
+   * @param attempt 重试次数（0=首次），透传给 provider 用于温度递增
+   */
+  async getMove(
+    providerId?: string,
+    request?: AIRequest,
+    _apiKey?: string,
+    _baseUrl?: string,
+    attempt: number = 0,
+  ): Promise<AIResponse> {
     if (!request) throw new Error('AI 请求参数为空');
 
     const response = await Promise.race([
-      this.provider.getMove(request),
-      this.timeoutPromise()
+      this.provider.getMove(request, attempt),
+      this.timeoutPromise(),
     ]);
 
+    // 合法性校验：拦截非法走法，触发上层重试
     const engine = new ChessEngine();
     engine.loadBoard(request.board, request.role);
     const validation = engine.validateMove(response.from, response.to);
     if (!validation.valid) {
-      throw new Error(`AI 返回非法走法: ${validation.reason}`);
+      const coord = `from=(${response.from.x},${response.from.y}) to=(${response.to.x},${response.to.y})`;
+      throw new Error(`AI 返回非法走法: ${validation.reason} [${coord}]`);
     }
 
     return response;
