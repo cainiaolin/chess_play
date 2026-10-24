@@ -186,7 +186,13 @@ function buildCreatePayload() {
     aiRetryOnError: configStore.aiRetryOnError,
     aiThinkDelay: configStore.aiThinkDelay
   }
+  // 人机对战默认走本地 Pikafish 引擎（可切回 LLM）；难度仅对引擎生效
+  const humanVsAiEngine = configStore.gameMode === 'human_vs_ai' && configStore.aiOpponentType !== 'llm'
+  if (humanVsAiEngine) {
+    opts.aiDifficulty = configStore.difficulty || 3
+  }
   const human = configStore.humanSide || 'red'
+  const aiPlayer = humanVsAiEngine ? { type: 'ai', engine: 'pikafish' } : { type: 'ai' }
   if (configStore.gameMode === 'ai_vs_ai') {
     return {
       redPlayer: { type: 'ai' },
@@ -195,8 +201,8 @@ function buildCreatePayload() {
     }
   }
   return {
-    redPlayer: human === 'red' ? { type: 'user' } : { type: 'ai' },
-    blackPlayer: human === 'black' ? { type: 'user' } : { type: 'ai' },
+    redPlayer: human === 'red' ? { type: 'user' } : aiPlayer,
+    blackPlayer: human === 'black' ? { type: 'user' } : aiPlayer,
     options: opts
   }
 }
@@ -388,6 +394,10 @@ async function handleCellClick({ x, y, piece }) {
             if (result.data.aiMove) {
               const totalMoves = result.data.gameState?.moves?.length || 0
               addAiLog(result.data.aiMove, totalMoves)
+            }
+            // 引擎崩溃等情况下后端会把回合切回人类并附带错误说明
+            if (result.data.error) {
+              showMoveTip(`AI 走棋失败：${result.data.error}`)
             }
           } else {
             // 走法被后端拒绝，回滚乐观更新

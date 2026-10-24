@@ -2,6 +2,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { ChessEngine } from './chess-engine';
 import { AIAdapter } from './ai-adapter';
 import { TimerService } from './timer-service';
+import { pikafishEngine, difficultyToProfile, EngineUnavailableError } from './pikafish-engine';
+import { formatEngineThinking } from './engine-thinking';
 import {
   Board,
   Move,
@@ -24,9 +26,11 @@ import {
 export interface GameConfig {
   redPlayer: {
     type: 'user' | 'ai';
+    engine?: 'pikafish';
   };
   blackPlayer: {
     type: 'user' | 'ai';
+    engine?: 'pikafish';
   };
   options?: Partial<GameOptions>;
 }
@@ -66,7 +70,8 @@ export interface GameStateResponse {
 export class GameService {
   private games: Map<string, GameSession>;
   private timers: Map<string, TimerService>;
-  private aiAdapter: AIAdapter;
+  /** LLM 适配器懒加载：引擎模式不依赖 .env 的 LLM 配置也能开局 */
+  private llmAdapter?: AIAdapter;
   private io: any;
 
   // 默认游戏选项
@@ -80,14 +85,26 @@ export class GameService {
     autoForfeit: true,
     aiThinkDelay: 1000,
     aiRetryOnError: true,
-    drawOnNoCapture: 60
+    drawOnNoCapture: 60,
+    aiDifficulty: 3
   };
 
   constructor(io?: any) {
     this.games = new Map();
     this.timers = new Map();
     this.io = io;
-    this.aiAdapter = new AIAdapter();
+  }
+
+  /**
+   * 懒加载 LLM 适配器
+   * AIAdapter 构造时要求 .env 已配置 LLM；只在真正走 LLM 路径时才构造，
+   * 使纯引擎对局在无 LLM 配置的环境也能运行。
+   */
+  private getLlmAdapter(): AIAdapter {
+    if (!this.llmAdapter) {
+      this.llmAdapter = new AIAdapter();
+    }
+    return this.llmAdapter;
   }
 
   /**
@@ -101,6 +118,14 @@ export class GameService {
    * 创建新游戏
    */
   createGame(config: GameConfig): GameStateResponse {
+    // 引擎模式快速失败：创建时就提示下载，而不是对局中途才报错
+    const usesEngine = config.redPlayer.engine === 'pikafish' || config.blackPlayer.engine === 'pikafish';
+    if (usesEngine && !pikafishEngine.isBinaryPresent()) {
+      throw new EngineUnavailableError(
+        'Pikafish 引擎未安装：请在 server 目录运行 node scripts/download-pikafish.mjs 下载（或设置 ENGINE_PATH 环境变量）'
+      );
+    }
+
     const engine = new ChessEngine();
     const gameId = uuidv4();
     const now = Date.now();
@@ -365,8 +390,58 @@ export class GameService {
   private static readonly AI_MAX_RETRIES = 3;
 
   /**
-   * 获取AI走法（使用后端 .env 统一配置的模型）
-   * 根据 game.options.aiRetryOnError 决定非法走法时重试还是直接判负
+   * 引擎模式：用 Pikafish 分析当前局面并返回走法
+   * 引擎走法天然合法，仍过 validateMove 作双保险
+   */
+  private async getEngineAiMove(engine: ChessEngine, game: GameSession): Promise<AIResponse> {
+    const profile = difficultyToProfile(game.options.aiDifficulty ?? 3);
+    const info = await pikafishEngine.analyze(engine.toFen(), {
+      moveTimeMs: profile.moveTimeMs,
+      multiPv: profile.multiPv,
+      weights: profile.weights
+    });
+
+    // 双保险：引擎走法非法属于严重异常（坐标转换错误等），直接抛出
+    const validation = engine.validateMove(info.bestmove.from, info.bestmove.to);
+    if (!validation.valid) {
+      throw new Error(
+        `引擎走法未通过合法性校验: (${info.bestmove.from.x},${info.bestmove.from.y}) -> (${info.bestmove.to.x},${info.bestmove.to.y})（${validation.reason ?? '未知原因'}）`
+      );
+    }
+
+    const thinking = formatEngineThinking(engine.getBoard(), engine.getTurn(), info);
+    return { from: info.bestmove.from, to: info.bestmove.to, thinking };
+  }
+
+  /**
+   * 执行 AI 走法并同步会话状态（LLM 与引擎路径共用）
+   */
+  private applyAiMove(engine: ChessEngine, game: GameSession, aiResponse: AIResponse): void {
+    engine.makeMove(aiResponse.from, aiResponse.to);
+    game.board = engine.getBoard();
+    game.turn = engine.getTurn();
+    game.moves = engine.getMoves();
+    game.status = engine.getStatus();
+    game.updatedAt = Date.now();
+  }
+
+  /**
+   * 引擎模式提示：短时全强度分析（提示的质量不该随难度缩水）
+   */
+  private async getEngineHint(engine: ChessEngine): Promise<AIResponse> {
+    const info = await pikafishEngine.analyze(engine.toFen(), { moveTimeMs: 2000 });
+    const validation = engine.validateMove(info.bestmove.from, info.bestmove.to);
+    if (!validation.valid) {
+      throw new Error(`引擎提示走法未通过合法性校验（${validation.reason ?? '未知原因'}）`);
+    }
+    const thinking = formatEngineThinking(engine.getBoard(), engine.getTurn(), info);
+    return { from: info.bestmove.from, to: info.bestmove.to, thinking };
+  }
+
+  /**
+   * 获取AI走法
+   * 引擎玩家走 Pikafish；其余（LLM 模式）使用后端 .env 统一配置的模型，
+   * 按 game.options.aiRetryOnError 决定非法走法时重试还是直接判负
    */
   private async getAIMove(gameId: string): Promise<AIResponse> {
     const engine = this.getEngine(gameId);
@@ -374,6 +449,15 @@ export class GameService {
 
     if (!game) {
       throw new Error('游戏不存在');
+    }
+
+    // 引擎路径：不进重试循环（进程级错误重试无意义，队列内已有重启机制）
+    const currentPlayer = game.turn === 'red' ? game.players.red : game.players.black;
+    if (currentPlayer.type === 'ai' && currentPlayer.engine === 'pikafish') {
+      const aiResponse = await this.getEngineAiMove(engine, game);
+      this.applyAiMove(engine, game, aiResponse);
+      console.log(`引擎走法已执行: ${gameId}, 从 (${aiResponse.from.x},${aiResponse.from.y}) 到 (${aiResponse.to.x},${aiResponse.to.y})`);
+      return aiResponse;
     }
 
     const maxRetries = game.options.aiRetryOnError ? GameService.AI_MAX_RETRIES : 0;
@@ -387,17 +471,9 @@ export class GameService {
           history: engine.getMoves()
         };
 
-        const aiResponse = await this.aiAdapter.getMove(undefined, aiRequest);
+        const aiResponse = await this.getLlmAdapter().getMove(undefined, aiRequest);
 
-        // 执行AI走法
-        engine.makeMove(aiResponse.from, aiResponse.to);
-
-        // 更新游戏状态
-        game.board = engine.getBoard();
-        game.turn = engine.getTurn();
-        game.moves = engine.getMoves();
-        game.status = engine.getStatus();
-        game.updatedAt = Date.now();
+        this.applyAiMove(engine, game, aiResponse);
 
         if (attempt > 0) {
           console.log(`AI 第 ${attempt + 1} 次尝试成功: ${gameId}`);
@@ -612,13 +688,21 @@ export class GameService {
         return { success: false, error: '游戏已结束' };
       }
 
+      // 提示也用引擎（如果本局有引擎玩家）：不限棋力短时分析，给出真正高质量建议
+      const usesEngine = game.players.red.engine === 'pikafish' || game.players.black.engine === 'pikafish';
+      if (usesEngine) {
+        const hint = await this.getEngineHint(engine);
+        console.log(`提示已生成(引擎): ${gameId}`);
+        return { success: true, hint };
+      }
+
       const aiRequest: AIRequest = {
         board: engine.getBoard(),
         role: engine.getTurn(),
         history: engine.getMoves()
       };
 
-      const hint = await this.aiAdapter.getMove(undefined, aiRequest);
+      const hint = await this.getLlmAdapter().getMove(undefined, aiRequest);
 
       console.log(`提示已生成: ${gameId}`);
 

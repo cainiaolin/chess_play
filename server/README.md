@@ -5,12 +5,54 @@
 ## 功能特性
 
 - ✅ 完整的中国象棋规则引擎
+- ✅ **引擎模式**：Pikafish 大师引擎（棋力 Elo 3500+，远超人类特级大师），5 档难度
 - ✅ AI 对弈支持 (OpenAI, DeepSeek, 百度文心一言)
 - ✅ WebSocket 实时通信
 - ✅ 游戏会话管理
 - ✅ RESTful API
 - ✅ 悔棋功能
 - ✅ AI 提示功能
+
+## Pikafish 引擎模式
+
+人机对战默认走本地 Pikafish 引擎（Stockfish 的中国象棋分支），AI 思考面板展示引擎真实搜索数据
+（搜索深度/局面评估/预演着法，中文纵线记法）。创建对局时 AI 一方带 `engine: "pikafish"` 字段即启用：
+
+```json
+{
+  "redPlayer": { "type": "user" },
+  "blackPlayer": { "type": "ai", "engine": "pikafish" },
+  "options": { "aiDifficulty": 5 }
+}
+```
+
+### 安装引擎（首次部署必做）
+
+```bash
+cd server
+node scripts/download-pikafish.mjs
+```
+
+自动下载 Pikafish 二进制 + NNUE 权重到 `server/engines/`（约 57MB，已 gitignore）并自检。
+GitHub 直连失败时脚本会自动尝试镜像源。也可用 `ENGINE_PATH` 环境变量指向自定义路径。
+
+### 难度等级（options.aiDifficulty，1-5）
+
+| 级别 | 标签 | 机制 |
+|---|---|---|
+| 1 | 新手 | 300ms + 35% 概率选次优着法 |
+| 2 | 业余 | 600ms + 40% 概率选次优着法 |
+| 3 | 专业 | 1.2s + 15% 概率选次优着法 |
+| 4 | 大师 | 2.5s + 3% 概率选次优着法 |
+| 5 | 特级大师 | 5s 全强度，永远最佳（Elo 3500+） |
+
+注：此版 Pikafish 不支持 UCI_Elo 限棋力，弱化档通过 MultiPV 候选 + 次优着法加权实现；
+一步杀/两步杀局面永远走最佳（不会"放水"错过绝杀）。思考时间上限可用 `PIKAFISH_MAX_MOVETIME_MS` 覆盖。
+
+### 相关环境变量
+
+- `ENGINE_PATH`：引擎二进制路径（默认 `server/engines/pikafish.exe`）
+- `PIKAFISH_MAX_MOVETIME_MS`：难度 5 的单步思考毫秒数（默认 5000）
 
 ## 技术栈
 

@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { App } from './app';
+import { pikafishEngine } from './services/pikafish-engine';
 
 // 加载环境变量
 dotenv.config();
@@ -11,15 +12,15 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 const app = new App(PORT);
 app.listen();
 
-// 优雅关闭
+// 优雅关闭（先停引擎子进程，防止孤儿进程）
 process.on('SIGTERM', () => {
   console.log('SIGTERM信号接收，正在关闭服务器...');
-  process.exit(0);
+  pikafishEngine.shutdown().finally(() => process.exit(0));
 });
 
 process.on('SIGINT', () => {
   console.log('\nSIGINT信号接收，正在关闭服务器...');
-  process.exit(0);
+  pikafishEngine.shutdown().finally(() => process.exit(0));
 });
 
 // 未捕获的异常处理

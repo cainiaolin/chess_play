@@ -43,8 +43,44 @@
         </div>
       </section>
 
+      <!-- AI 对手类型（人机模式） -->
+      <section v-if="config.gameMode === 'human_vs_ai'" class="settings-section">
+        <h2 class="section-title">
+          <span class="title-icon">🧠</span>
+          AI 对手
+        </h2>
+        <div class="difficulty-selector mode-selector">
+          <button
+            type="button"
+            class="difficulty-btn"
+            :class="{ active: config.aiOpponentType === 'pikafish' }"
+            @click="config.aiOpponentType = 'pikafish'; saveConfig()"
+          >
+            大师引擎
+          </button>
+          <button
+            type="button"
+            class="difficulty-btn"
+            :class="{ active: config.aiOpponentType === 'llm' }"
+            @click="config.aiOpponentType = 'llm'; saveConfig()"
+          >
+            AI 模型
+          </button>
+        </div>
+        <p v-if="config.aiOpponentType === 'pikafish'" class="mode-hint">
+          Pikafish 象棋引擎（本地运行，无需 API Key）——棋力远超人类特级大师，请搭配下方难度等级体验；
+          对局解说由引擎真实搜索数据生成（深度/评估/预演着法）。
+        </p>
+        <p v-else class="mode-hint">
+          使用下方配置的大模型走棋（棋力有限，仅供娱乐对比），走法由服务端统一配置的模型生成。
+        </p>
+      </section>
+
       <!-- AI 模型配置 -->
-      <section class="settings-section">
+      <section
+        v-if="config.gameMode === 'ai_vs_ai' || config.aiOpponentType === 'llm'"
+        class="settings-section"
+      >
         <h2 class="section-title">
           <span class="title-icon">🤖</span>
           AI 模型配置
@@ -248,11 +284,14 @@
         </button>
       </section>
 
-      <!-- 难度设置 -->
-      <section class="settings-section">
+      <!-- 难度设置（仅人机 + 引擎模式） -->
+      <section
+        v-if="config.gameMode === 'human_vs_ai' && config.aiOpponentType === 'pikafish'"
+        class="settings-section"
+      >
         <h2 class="section-title">
           <span class="title-icon">⚡</span>
-          AI 难度等级
+          引擎难度等级
         </h2>
         <div class="difficulty-selector">
           <button
@@ -266,6 +305,7 @@
             {{ level.label }}
           </button>
         </div>
+        <p class="mode-hint">特级大师 = 引擎全强度（Elo 3500+，远超人类冠军），其余等级通过缩短思考时间并按概率选择次优着法递减。</p>
       </section>
 
       <!-- 服务器配置 -->
@@ -589,11 +629,11 @@ const newModel = reactive({
 })
 
 const difficultyLevels = [
-  { value: 1, label: '简单' },
-  { value: 2, label: '较易' },
-  { value: 3, label: '中等' },
-  { value: 4, label: '较难' },
-  { value: 5, label: '困难' }
+  { value: 1, label: '1 新手' },
+  { value: 2, label: '2 业余' },
+  { value: 3, label: '3 专业' },
+  { value: 4, label: '4 大师' },
+  { value: 5, label: '5 特级大师' }
 ]
 
 // 预设模型

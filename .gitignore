@@ -23,3 +23,6 @@ worktrees/
 # Claude 配置（可选，如不需要提交可取消注释）
 .claude/
 .spec-workflow/
+
+# Pikafish 引擎二进制与 NNUE 权重（约 57MB，不入库，用 server/scripts/download-pikafish.mjs 下载）
+server/engines/

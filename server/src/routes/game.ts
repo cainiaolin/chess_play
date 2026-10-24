@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { gameService, GameConfig } from '../services/game-service';
 import { Position } from '../types/chess';
+import { EngineUnavailableError } from '../services/pikafish-engine';
 
 /**
  * 创建游戏请求接口
@@ -8,9 +9,11 @@ import { Position } from '../types/chess';
 interface CreateGameRequest {
   redPlayer: {
     type: 'user' | 'ai';
+    engine?: 'pikafish';
   };
   blackPlayer: {
     type: 'user' | 'ai';
+    engine?: 'pikafish';
   };
   options?: {
     timerMode?: 'per_move' | 'total_time';
@@ -22,6 +25,7 @@ interface CreateGameRequest {
     autoForfeit?: boolean;
     aiThinkDelay?: number;
     drawOnNoCapture?: number;
+    aiDifficulty?: number;
   };
 }
 
@@ -69,6 +73,18 @@ router.post('/create', (req: Request, res: Response) => {
       });
     }
 
+    // 难度仅对引擎玩家生效，1-5 整数
+    if (body.options?.aiDifficulty !== undefined) {
+      const d = body.options.aiDifficulty;
+      if (!Number.isInteger(d) || d < 1 || d > 5) {
+        return res.status(400).json({
+          error: 'Bad Request',
+          message: 'aiDifficulty 必须为 1-5 的整数',
+          code: 'INVALID_DIFFICULTY'
+        });
+      }
+    }
+
     const config: GameConfig = {
       redPlayer: body.redPlayer,
       blackPlayer: body.blackPlayer,
@@ -82,6 +98,14 @@ router.post('/create', (req: Request, res: Response) => {
       data: game
     });
   } catch (error) {
+    // 引擎缺失属于可修复的环境问题，用 400 + 专用错误码让前端给出下载指引
+    if (error instanceof EngineUnavailableError) {
+      return res.status(400).json({
+        error: 'Engine Not Found',
+        message: error.message,
+        code: 'ENGINE_NOT_FOUND'
+      });
+    }
     console.error('创建游戏失败:', error);
     res.status(500).json({
       error: 'Internal Server Error',

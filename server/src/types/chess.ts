@@ -44,6 +44,7 @@ export interface GameOptions {
   aiThinkDelay?: number;     // AI思考延迟（毫秒）
   aiRetryOnError?: boolean;  // AI走法非法时是否重试（true=重试最多3次，false=直接判负）
   drawOnNoCapture?: number;  // 无吃子回合数判和（默认60）
+  aiDifficulty?: number;     // 引擎难度 1-5（1新手 ~ 5特级大师=全强度，仅 engine 玩家生效）
 }
 
 // 计时器状态
@@ -91,6 +92,8 @@ export interface Player {
   model?: string;
   apiKey?: string;
   baseUrl?: string;
+  /** 引擎模式：走本地 Pikafish 引擎而非 LLM（设置后 model 等字段被忽略） */
+  engine?: 'pikafish';
 }
 
 // 走法请求

@@ -37,6 +37,8 @@ const defaultConfig = {
   aiModel: 'deepseek',
   redAiModel: 'deepseek',
   blackAiModel: 'deepseek',
+  /** 人机模式 AI 对手类型：pikafish 本地引擎（默认） | llm 大模型 */
+  aiOpponentType: 'pikafish',
   difficulty: 3,
   enableSound: true,
   enableVibration: true,
@@ -58,6 +60,7 @@ export const useConfigStore = defineStore('config', () => {
   const gameMode = ref(defaultConfig.gameMode)
   const humanSide = ref(defaultConfig.humanSide)
   const aiModel = ref(defaultConfig.aiModel)
+  const aiOpponentType = ref(defaultConfig.aiOpponentType)
   const redAiModel = ref(defaultConfig.redAiModel)
   const blackAiModel = ref(defaultConfig.blackAiModel)
   const difficulty = ref(defaultConfig.difficulty)
@@ -83,6 +86,7 @@ export const useConfigStore = defineStore('config', () => {
       gameMode.value = config.gameMode || defaultConfig.gameMode
       humanSide.value = config.humanSide || defaultConfig.humanSide
       aiModel.value = config.aiModel || defaultConfig.aiModel
+      aiOpponentType.value = config.aiOpponentType || defaultConfig.aiOpponentType
       redAiModel.value = config.redAiModel || defaultConfig.redAiModel
       blackAiModel.value = config.blackAiModel || defaultConfig.blackAiModel
       difficulty.value = config.difficulty || defaultConfig.difficulty
@@ -107,6 +111,7 @@ export const useConfigStore = defineStore('config', () => {
       gameMode: gameMode.value,
       humanSide: humanSide.value,
       aiModel: aiModel.value,
+      aiOpponentType: aiOpponentType.value,
       redAiModel: redAiModel.value,
       blackAiModel: blackAiModel.value,
       difficulty: difficulty.value,
@@ -131,6 +136,7 @@ export const useConfigStore = defineStore('config', () => {
     if (values.gameMode !== undefined) gameMode.value = values.gameMode
     if (values.humanSide !== undefined) humanSide.value = values.humanSide
     if (values.aiModel !== undefined) aiModel.value = values.aiModel
+    if (values.aiOpponentType !== undefined) aiOpponentType.value = values.aiOpponentType
     if (values.redAiModel !== undefined) redAiModel.value = values.redAiModel
     if (values.blackAiModel !== undefined) blackAiModel.value = values.blackAiModel
     if (values.difficulty !== undefined) difficulty.value = values.difficulty
@@ -206,7 +212,7 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   return {
-    serverUrl, gameMode, humanSide, aiModel, redAiModel, blackAiModel, difficulty, enableSound, enableVibration, customAIModels,
+    serverUrl, gameMode, humanSide, aiModel, aiOpponentType, redAiModel, blackAiModel, difficulty, enableSound, enableVibration, customAIModels,
     timerMode, moveTimeLimit, redTimeLimit, blackTimeLimit, firstPlayer, allowUndo, autoForfeit, aiRetryOnError, aiThinkDelay,
     loadConfig, saveConfig, updateConfig,
     getAllAIModels, getCurrentAIModel,
