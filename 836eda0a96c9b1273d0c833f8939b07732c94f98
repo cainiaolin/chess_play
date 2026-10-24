@@ -1,0 +1,67 @@
+frontend/src/stores/config.js
+  bb5fc2cdfa887721 40-41,63,89,114,139,215
+server/scripts/download-pikafish.mjs
+  bb5fc2cdfa887721 1-125
+server/src/index.ts
+  bb5fc2cdfa887721 3,15,18,23
+frontend/src/pages/settings/SettingsPage.vue
+  bb5fc2cdfa887721 46-78,80-83,287-291,294,308,632-636
+.gitignore
+  bb5fc2cdfa887721 26-28
+server/src/services/pikafish-engine.ts
+  bb5fc2cdfa887721 1-449
+server/tests/engine-thinking.test.ts
+  bb5fc2cdfa887721 1-55
+server/tests/pikafish-protocol.test.ts
+  bb5fc2cdfa887721 1-212
+server/src/types/chess.ts
+  bb5fc2cdfa887721 47,95-96
+server/src/services/game-service.ts
+  bb5fc2cdfa887721 5-6,29,33,73-74,88-89,96,98-107,121-127,393-402,404-410,412-414,416-426,428-439,441-444,454-461,691-697
+server/src/services/engine-thinking.ts
+  bb5fc2cdfa887721 1-68
+server/README.md
+  bb5fc2cdfa887721 8,16-55
+server/tests/integration/pikafish-engine.test.ts
+  bb5fc2cdfa887721 1-80
+server/tests/xiangqi-notation.test.ts
+  bb5fc2cdfa887721 1-189
+server/src/services/xiangqi-notation.ts
+  bb5fc2cdfa887721 1-168
+start.bat
+  bb5fc2cdfa887721 22-32
+server/scripts/strength-check.ts
+  bb5fc2cdfa887721 1-98
+server/src/routes/game.ts
+  bb5fc2cdfa887721 4,12,16,28,76-87,101-108
+frontend/src/pages/game/GamePage.vue
+  bb5fc2cdfa887721 189-193,195,204-205,398-401
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.8.1",
+  "base_commit_sha": "836eda0a96c9b1273d0c833f8939b07732c94f98",
+  "prompts": {
+    "bb5fc2cdfa887721": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c42a148-c468-411f-b835-eae58a5a652a",
+        "model": "glm-5.2"
+      },
+      "human_author": "linxiangna <linxiangna@cvte.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2802,
+      "overriden_lines": 133,
+      "messages_url": "https://gitai.gz.cvte.cn/cas/b9c7aac77a3980266b6b015da0dab6d0fb882d57f951b619f7141d8d26594cff",
+      "token_usage": {
+        "input_tokens": 1727636,
+        "output_tokens": 301260,
+        "cache_read_tokens": 53854272,
+        "cache_creation_tokens": 0,
+        "total_cost": null
+      }
+    }
+  }
+}
