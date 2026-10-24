@@ -39,10 +39,10 @@ function getBuiltInRules(): string {
 }
 
 const PIECE_NAMES_RED: Record<PieceType, string> = {
-  k: '将', a: '士', b: '象', n: '马', r: '车', c: '炮', p: '兵'
+  k: '帅', a: '仕', b: '相', n: '马', r: '车', c: '炮', p: '兵'
 };
 const PIECE_NAMES_BLACK: Record<PieceType, string> = {
-  k: '帅', a: '仕', b: '相', n: '马', r: '车', c: '炮', p: '卒'
+  k: '将', a: '士', b: '象', n: '马', r: '车', c: '炮', p: '卒'
 };
 
 function boardToString(board: Board): string {
@@ -76,7 +76,7 @@ ${boardToString(request.board)}
 历史走法：
 ${historyToString(request.history) || '无'}
 
-请分析当前棋局，给出最佳走法。必须返回JSON格式：
+请分析当前棋局，给出最佳走法。to的坐标只用给出最终走法的位置，必须返回JSON格式：
 {
   "from": {"x": 列号0-8, "y": 行号0-9},
   "to": {"x": 列号0-8, "y": 行号0-9},
@@ -143,6 +143,12 @@ class LLMProvider {
   async getMove(request: AIRequest): Promise<AIResponse> {
     const prompt = buildPrompt(request);
     const chessRules = getChessRules();
+
+    // 打印当前棋盘状态
+    console.log(`\n===== AI 请求 [${request.role === 'red' ? '红方' : '黑方'}] =====`);
+    console.log(boardToString(request.board));
+    console.log(`历史走法数: ${request.history.length}`);
+
     const systemPrompt = `你是一个中国象棋专家。请严格遵循以下规则进行对弈。
 
 ${chessRules}
@@ -181,7 +187,12 @@ ${chessRules}
       || data.response;
     if (!content) throw new Error('LLM 响应内容为空');
 
-    return parseResponse(content);
+    const aiResponse = parseResponse(content);
+    console.log(`AI 响应: (${aiResponse.from.x},${aiResponse.from.y}) → (${aiResponse.to.x},${aiResponse.to.y})`);
+    if (aiResponse.thinking) console.log(`AI 思考: ${aiResponse.thinking.slice(0, 200)}`);
+    console.log('=====\n');
+
+    return aiResponse;
   }
 }
 
